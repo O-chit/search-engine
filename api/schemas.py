@@ -25,6 +25,7 @@ class SearchTiming(BaseModel):
     parse: float
     retrieval: float
     rank: float
+    personalize: Optional[float] = None
     total: float
 
 

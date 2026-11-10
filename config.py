@@ -65,6 +65,7 @@ BETA_PROFILE: float = float(os.getenv("BETA_PROFILE", "0.15"))
 BETA_RECENT: float = float(os.getenv("BETA_RECENT", "0.25"))
 RECENT_MAX: int = int(os.getenv("RECENT_MAX", "5"))
 EXPLORE_POSITION: int = int(os.getenv("EXPLORE_POSITION", "8"))
+CLICK_DEDUPE_SECONDS: float = float(os.getenv("CLICK_DEDUPE_SECONDS", "2.0"))
 
 # Storage
 SQLITE_PATH: str = os.getenv("SQLITE_PATH", "data/app.db")
@@ -85,6 +86,8 @@ API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
 API_PORT: int = int(os.getenv("API_PORT", "8000"))
 SNIPPET_CHARS: int = int(os.getenv("SNIPPET_CHARS", "160"))
 MAPPING_PATH: str = os.getenv("MAPPING_PATH", "indexing/mapping.json")
+WARMUP_QUERY_COUNT: int = int(os.getenv("WARMUP_QUERY_COUNT", "50"))
+WARMUP_SEED: int = int(os.getenv("WARMUP_SEED", "7"))
 
 # Evaluation
 SPLIT_SEED: int = int(os.getenv("SPLIT_SEED", "42"))

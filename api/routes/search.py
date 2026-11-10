@@ -33,7 +33,12 @@ async def search_endpoint(
         ensure_session(x_session_id)
 
     try:
-        pipeline_result = await run_pipeline(q, config_name=config, personalize=personalize)
+        pipeline_result = await run_pipeline(
+            q,
+            config_name=config,
+            personalize=personalize,
+            session_id=x_session_id,
+        )
     except EmptyQueryError as exc:
         raise HTTPException(
             status_code=400,
@@ -58,7 +63,7 @@ async def search_endpoint(
         pos = start_idx + idx + 1
         raw_snippet = c.bullets.strip() if c.bullets.strip() else c.description.strip()
         snippet = raw_snippet[:SNIPPET_CHARS]
-        score = round(c.rel, 4)
+        score = round(c.score, 4)
 
         debug_info: Optional[Dict[str, Any]] = None
         if debug:
@@ -68,7 +73,9 @@ async def search_endpoint(
                 "vec_rank": c.vec_rank,
                 "vec_score": round(c.vec_score, 4) if c.vec_score is not None else None,
                 "rrf": round(c.rrf, 4) if c.rrf is not None else None,
-                "rel": score,
+                "rel": round(c.rel, 4),
+                "cos_profile": round(c.cos_profile, 4) if c.cos_profile is not None else 0.0,
+                "cos_recent": round(c.cos_recent, 4) if c.cos_recent is not None else 0.0,
             }
 
         result_items.append(
@@ -79,7 +86,7 @@ async def search_endpoint(
                 snippet=snippet,
                 score=score,
                 position=pos,
-                explored=False,
+                explored=c.explored,
                 debug=debug_info,
             )
         )
@@ -93,16 +100,16 @@ async def search_endpoint(
             normalized_text=pipeline_result.parsed.normalized,
             lang=pipeline_result.parsed.lang,
             result_uids=result_uids,
-            personalized=personalize,
+            personalized=pipeline_result.personalized,
             degraded=pipeline_result.degraded,
-            timing_ms=pipeline_result.timing.model_dump(),
+            timing_ms=pipeline_result.timing.model_dump(exclude_none=True),
         )
 
     log_record = {
         "query_id": pipeline_result.query_id,
         "lang": pipeline_result.parsed.lang,
         "degraded": pipeline_result.degraded,
-        "timing_ms": pipeline_result.timing.model_dump(),
+        "timing_ms": pipeline_result.timing.model_dump(exclude_none=True),
     }
     log_json = json.dumps(log_record, ensure_ascii=False)
     print(log_json, flush=True)
@@ -112,7 +119,7 @@ async def search_endpoint(
         query_id=pipeline_result.query_id,
         normalized_query=pipeline_result.parsed.normalized,
         lang=pipeline_result.parsed.lang,
-        personalized=False,
+        personalized=pipeline_result.personalized,
         degraded=pipeline_result.degraded,
         total=total_candidates,
         page=page,

@@ -4,6 +4,26 @@
       "knn": true,
       "number_of_shards": 1,
       "number_of_replicas": 0,
+      "store": {
+        "preload": [
+          "doc",
+          "pos",
+          "pay",
+          "tim",
+          "tip",
+          "dvd",
+          "dvm",
+          "nvd",
+          "nvm",
+          "cfs",
+          "cfe",
+          "vec",
+          "vem",
+          "vex",
+          "vemf",
+          "hnsw"
+        ]
+      },
       "similarity": {
         "bm25_short": {
           "type": "BM25",

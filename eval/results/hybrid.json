@@ -1,7 +1,8 @@
 {
   "config": "hybrid",
-  "run_at": "2026-11-10T22:13:55.013166",
+  "run_at": "2026-11-11T00:12:19.744501",
   "num_queries_total": 2359,
+  "degraded_count": 0,
   "metrics": {
     "recall_at_100": {
       "mean": 0.7461,
@@ -17,9 +18,9 @@
     }
   },
   "latency_ms": {
-    "p50": 94.56,
-    "p95": 101.5,
-    "mean": 92.64
+    "p50": 94.59,
+    "p95": 102.38,
+    "mean": 93.99
   },
   "config_params": {
     "retrieval_k": 200,

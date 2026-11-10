@@ -78,9 +78,11 @@ def print_comparison_table(results_dir: str = EVAL_RESULTS_DIR) -> str:
             latency = data.get("latency_ms", {})
             p50 = latency.get("p50", 0.0)
             p95 = latency.get("p95", 0.0)
+            degraded_count = data.get("degraded_count", 0)
             rows.append({
                 "config": config_name,
                 "queries": num_queries,
+                "degraded": degraded_count,
                 "recall": rec,
                 "ndcg": ndcg,
                 "mrr": m,
@@ -91,12 +93,12 @@ def print_comparison_table(results_dir: str = EVAL_RESULTS_DIR) -> str:
             print(f"Lỗi khi đọc file kết quả {jf}: {exc}")
 
     lines: List[str] = [
-        "| Config | Queries | Recall@100 | NDCG@10 | MRR | p50 (ms) | p95 (ms) |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Config | Queries | Degraded | Recall@100 | NDCG@10 | MRR | p50 (ms) | p95 (ms) |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in rows:
         lines.append(
-            f"| {r['config']} | {r['queries']} | {r['recall']:.4f} | {r['ndcg']:.4f} | {r['mrr']:.4f} | {r['p50']:.1f} | {r['p95']:.1f} |"
+            f"| {r['config']} | {r['queries']} | {r['degraded']} | {r['recall']:.4f} | {r['ndcg']:.4f} | {r['mrr']:.4f} | {r['p50']:.1f} | {r['p95']:.1f} |"
         )
     table_str = "\n".join(lines)
     print("\n=== BẢNG SO SÁNH KẾT QUẢ ĐÁNH GIÁ ===")
@@ -155,11 +157,14 @@ async def evaluate_config(
     mrr_best_list: List[float] = []
     mrr_worst_list: List[float] = []
     tie_dependent_count: int = 0
+    degraded_count: int = 0
 
     t_eval_start = time.perf_counter()
 
     for idx, query in enumerate(test_queries, start=1):
         res = await run_pipeline(query, config_name=config_name, personalize=False, timeout_ms=2000)
+        if res.degraded:
+            degraded_count += 1
         candidate_uids = [c.product_uid for c in res.candidates]
         latencies.append(res.timing.total)
 
@@ -237,6 +242,7 @@ async def evaluate_config(
         "config": config_name,
         "run_at": datetime.now().isoformat(),
         "num_queries_total": len(test_queries),
+        "degraded_count": degraded_count,
         "metrics": {
             "recall_at_100": {
                 "mean": round(mean_recall, 4),

@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 from typing import Any, Dict, List, Optional
+import numpy as np
 
 from config import RECENT_MAX, SQLITE_PATH
 
@@ -292,3 +293,140 @@ def get_events(session_id: Optional[str] = None, db_path: str = SQLITE_PATH) -> 
                 """
             )
         return [dict(r) for r in cursor.fetchall()]
+
+
+def get_profile_vec(session_id: str, db_path: str = SQLITE_PATH) -> Optional[np.ndarray]:
+    """Đọc vector sở thích profile_vec của phiên dưới dạng mảng float32."""
+    with get_connection(db_path) as conn:
+        cursor = conn.execute(
+            "SELECT profile_vec FROM sessions WHERE session_id = ? LIMIT 1;",
+            (session_id,),
+        )
+        row = cursor.fetchone()
+        if row is None or row["profile_vec"] is None:
+            return None
+        return np.frombuffer(row["profile_vec"], dtype=np.float32).copy()
+
+
+def save_profile_vec(session_id: str, profile_vec: Optional[np.ndarray], db_path: str = SQLITE_PATH) -> None:
+    """Lưu vector sở thích profile_vec vào bảng sessions dưới dạng BLOB float32."""
+    blob = profile_vec.astype(np.float32).tobytes() if profile_vec is not None else None
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO sessions (session_id, profile_vec, recent_uids, event_count, created_at, updated_at)
+            VALUES (?, ?, '[]', 0, ?, ?);
+            """,
+            (session_id, blob, now_iso, now_iso),
+        )
+        conn.execute(
+            "UPDATE sessions SET profile_vec = ?, updated_at = ? WHERE session_id = ?;",
+            (blob, now_iso, session_id),
+        )
+        conn.commit()
+
+
+def get_last_click(session_id: str, db_path: str = SQLITE_PATH) -> Optional[Dict[str, Any]]:
+    """Đọc thông tin click gần nhất của phiên gồm product_uid và thời điểm ts."""
+    with get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            SELECT product_uid, ts
+            FROM events
+            WHERE session_id = ? AND type = 'click'
+            ORDER BY event_id DESC
+            LIMIT 1;
+            """,
+            (session_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {"product_uid": str(row["product_uid"]), "ts": str(row["ts"])}
+
+
+def update_session_recent(
+    session_id: str,
+    recent_uids: List[str],
+    event_count: int,
+    ts: Optional[str] = None,
+    db_path: str = SQLITE_PATH,
+) -> None:
+    """Cập nhật danh sách recent_uids và số lượng event_count của phiên."""
+    if ts is None:
+        ts = datetime.now(timezone.utc).isoformat()
+    recent_json = json.dumps(recent_uids, ensure_ascii=False)
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO sessions (session_id, profile_vec, recent_uids, event_count, created_at, updated_at)
+            VALUES (?, NULL, ?, ?, ?, ?);
+            """,
+            (session_id, recent_json, event_count, ts, ts),
+        )
+        conn.execute(
+            """
+            UPDATE sessions
+            SET recent_uids = ?, event_count = ?, updated_at = ?
+            WHERE session_id = ?;
+            """,
+            (recent_json, event_count, ts, session_id),
+        )
+        conn.commit()
+
+
+def update_session_profile(
+    session_id: str,
+    profile_vec: Optional[np.ndarray],
+    recent_uids: List[str],
+    event_count: int,
+    ts: Optional[str] = None,
+    db_path: str = SQLITE_PATH,
+) -> None:
+    """Cập nhật đồng thời profile_vec, recent_uids và event_count của phiên."""
+    if ts is None:
+        ts = datetime.now(timezone.utc).isoformat()
+    blob = profile_vec.astype(np.float32).tobytes() if profile_vec is not None else None
+    recent_json = json.dumps(recent_uids, ensure_ascii=False)
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO sessions (session_id, profile_vec, recent_uids, event_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (session_id, blob, recent_json, event_count, ts, ts),
+        )
+        conn.execute(
+            """
+            UPDATE sessions
+            SET profile_vec = ?, recent_uids = ?, event_count = ?, updated_at = ?
+            WHERE session_id = ?;
+            """,
+            (blob, recent_json, event_count, ts, session_id),
+        )
+        conn.commit()
+
+
+def insert_event(
+    query_id: str,
+    session_id: str,
+    product_uid: str,
+    event_type: str,
+    position: int,
+    ts: Optional[str] = None,
+    db_path: str = SQLITE_PATH,
+) -> None:
+    """Ghi trực tiếp một bản ghi sự kiện vào bảng events mà không đổi trạng thái phiên."""
+    if ts is None:
+        ts = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO events (query_id, session_id, product_uid, type, position, ts)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (query_id, session_id, product_uid, event_type, position, ts),
+        )
+        conn.commit()
+

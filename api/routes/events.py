@@ -4,7 +4,8 @@ from typing import Dict, Optional
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, status
 
 from api.schemas import EventCreateRequest
-from storage.db import query_exists, record_event
+from personalization.profile import apply_click
+from storage.db import query_exists
 
 router = APIRouter()
 
@@ -25,11 +26,12 @@ def create_event(
         )
 
     background_tasks.add_task(
-        record_event,
-        query_id=event_data.query_id,
+        apply_click,
         session_id=x_session_id,
         product_uid=event_data.product_uid,
-        event_type=event_data.type,
+        ts=None,
+        query_id=event_data.query_id,
         position=event_data.position,
+        event_type=event_data.type,
     )
     return {"status": "accepted"}

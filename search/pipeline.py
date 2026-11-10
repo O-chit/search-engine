@@ -9,12 +9,24 @@ import uuid
 
 from api.schemas import SearchTiming
 from config import BRANCH_TIMEOUT_MS, CANDIDATE_K, RETRIEVAL_K
+from indexing.model import get_product_embeddings, get_uid_index
+from ingestion.normalize import normalize_query
+from personalization.profile import compute_recent_vec
+from personalization.scorer import score_candidates
 from query.parser import ParsedQuery, parse
 from retrieval.bm25 import BM25Hit, search_bm25
 from retrieval.fusion import FusedCandidate, reciprocal_rank_fusion
 from retrieval.vector import VectorHit, search_vector
+from storage.db import get_profile_vec, get_session
 
 logger = logging.getLogger(__name__)
+
+try:
+    from retrieval.client import get_opensearch_client
+    _warm_client = get_opensearch_client()
+    _warm_client.search(index="products", body={"size": 1, "query": {"match_all": {}}}, request_timeout=2.0)
+except Exception:
+    pass
 
 
 class HybridSearchError(Exception):
@@ -40,6 +52,9 @@ class CandidateItem:
     vec_rank: Optional[int] = None
     vec_score: Optional[float] = None
     rrf: Optional[float] = None
+    cos_profile: Optional[float] = None
+    cos_recent: Optional[float] = None
+    explored: bool = False
 
 
 @dataclass
@@ -51,6 +66,7 @@ class PipelineResult:
     candidates: List[CandidateItem]
     timing: SearchTiming
     degraded: bool = False
+    personalized: bool = False
 
 
 async def _run_bm25_pipeline(
@@ -263,6 +279,7 @@ async def run_pipeline(
     query: str,
     config_name: str = "hybrid",
     personalize: bool = False,
+    session_id: Optional[str] = None,
     timeout_ms: Optional[int] = None,
 ) -> PipelineResult:
     """Chạy quy trình tìm kiếm sản phẩm theo cấu hình và trả về danh sách ứng viên kèm thời gian thực thi."""
@@ -281,15 +298,74 @@ async def run_pipeline(
 
     handler = PIPELINE_REGISTRY[config_name]
     if config_name == "hybrid" and timeout_ms is not None:
-        candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, personalize, timeout_ms=timeout_ms)
+        candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, False, timeout_ms=timeout_ms)
     else:
-        candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, personalize)
+        candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, False)
+
+    applied_personalization = False
+    personalize_ms: Optional[float] = None
+
+    if session_id and personalize:
+        t_pers_start = time.perf_counter()
+        session_row = get_session(session_id)
+        profile_vec = get_profile_vec(session_id)
+        event_count = int(session_row.get("event_count") or 0) if session_row else 0
+        recent_uids = list(session_row.get("recent_uids") or []) if session_row else []
+
+        all_embeddings = get_product_embeddings()
+        uid_index = get_uid_index()
+
+        recent_vec = None
+        if recent_uids and all_embeddings is not None and uid_index is not None:
+            recent_embeddings = [
+                all_embeddings[uid_index[u]]
+                for u in recent_uids
+                if u in uid_index
+            ]
+            recent_vec = compute_recent_vec(recent_embeddings)
+
+        cand_tuples = []
+        for c in candidates:
+            vec = None
+            if all_embeddings is not None and uid_index is not None and c.product_uid in uid_index:
+                vec = all_embeddings[uid_index[c.product_uid]]
+            cand_tuples.append((c.product_uid, c.rel, vec, c))
+
+        top_rel_cand = None
+        if candidates:
+            top_rel_cand = max(candidates, key=lambda c: (c.rel, c.product_uid))
+        top_rel_title = normalize_query(top_rel_cand.title) if top_rel_cand else ""
+
+        scored_candidates, applied_personalization = score_candidates(
+            candidates=cand_tuples,
+            profile_vec=profile_vec,
+            recent_vec=recent_vec,
+            event_count=event_count,
+            personalize=personalize,
+            has_model_code=parsed.has_model_code,
+            normalized_query=parsed.normalized,
+            top_rel_candidate_title=top_rel_title,
+        )
+
+        new_candidates: List[CandidateItem] = []
+        for rank, sc in enumerate(scored_candidates, start=1):
+            orig_c: CandidateItem = sc.original_item
+            orig_c.score = sc.score
+            orig_c.rank = rank
+            orig_c.cos_profile = sc.cos_profile
+            orig_c.cos_recent = sc.cos_recent
+            orig_c.explored = sc.explored
+            new_candidates.append(orig_c)
+        candidates = new_candidates
+
+        personalize_ms = (time.perf_counter() - t_pers_start) * 1000
 
     total_ms = (time.perf_counter() - t_start) * 1000
     timing = SearchTiming(
         parse=round(parse_ms, 2),
         retrieval=round(retrieval_ms, 2),
         rank=round(rank_ms, 2),
+        personalize=round(personalize_ms, 2) if personalize_ms is not None else None,
         total=round(total_ms, 2),
     )
 
@@ -301,4 +377,5 @@ async def run_pipeline(
         candidates=candidates,
         timing=timing,
         degraded=degraded,
+        personalized=applied_personalization,
     )
