@@ -65,3 +65,11 @@ PRODUCTS_PARQUET_PATH: str = os.path.join(PROCESSED_DATA_DIR, "products.parquet"
 ATTR_MAX: int = int(os.getenv("ATTR_MAX", "30"))
 MAX_QUERY_CHARS: int = int(os.getenv("MAX_QUERY_CHARS", "200"))
 
+# Indexing & API
+BULK_BATCH_SIZE: int = int(os.getenv("BULK_BATCH_SIZE", "500"))
+API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
+API_PORT: int = int(os.getenv("API_PORT", "8000"))
+SNIPPET_CHARS: int = int(os.getenv("SNIPPET_CHARS", "160"))
+MAPPING_PATH: str = os.getenv("MAPPING_PATH", "indexing/mapping.json")
+
+

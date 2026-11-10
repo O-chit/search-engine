@@ -1,0 +1,76 @@
+{
+  "settings": {
+    "index": {
+      "knn": true,
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "similarity": {
+        "bm25_short": {
+          "type": "BM25",
+          "k1": 1.2,
+          "b": 0.3
+        },
+        "bm25_long": {
+          "type": "BM25",
+          "k1": 1.2,
+          "b": 0.75
+        }
+      }
+    }
+  },
+  "mappings": {
+    "_source": {
+      "excludes": [
+        "embedding"
+      ]
+    },
+    "properties": {
+      "product_uid": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "english",
+        "similarity": "bm25_short"
+      },
+      "brand": {
+        "type": "text",
+        "analyzer": "standard",
+        "similarity": "bm25_short",
+        "fields": {
+          "raw": {
+            "type": "keyword"
+          }
+        }
+      },
+      "bullets": {
+        "type": "text",
+        "analyzer": "english",
+        "similarity": "bm25_long"
+      },
+      "description": {
+        "type": "text",
+        "analyzer": "english",
+        "similarity": "bm25_long"
+      },
+      "attributes_text": {
+        "type": "text",
+        "analyzer": "english",
+        "similarity": "bm25_long"
+      },
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 1024,
+        "method": {
+          "name": "hnsw",
+          "space_type": "cosinesimil",
+          "engine": "lucene",
+          "parameters": {
+            "ef_construction": 200,
+            "m": 16
+          }
+        }
+      }
+    }
+  }
+}

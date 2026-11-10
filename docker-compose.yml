@@ -1,3 +1,4 @@
+name: search-engine
 services:
   opensearch:
     image: opensearchproject/opensearch:2.18.0
