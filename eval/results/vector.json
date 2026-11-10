@@ -1,0 +1,30 @@
+{
+  "config": "vector",
+  "run_at": "2026-11-10T21:28:55.589414",
+  "num_queries_total": 2359,
+  "metrics": {
+    "recall_at_100": {
+      "mean": 0.6257,
+      "num_queries": 1931
+    },
+    "mrr": {
+      "mean": 0.274,
+      "num_queries": 1931
+    },
+    "ndcg_at_10": {
+      "mean": 0.8846,
+      "num_queries": 2354
+    }
+  },
+  "latency_ms": {
+    "p50": 96.93,
+    "p95": 131.46,
+    "mean": 102.88
+  },
+  "config_params": {
+    "retrieval_k": 200,
+    "candidate_k": 100,
+    "rrf_k": 60,
+    "relevant_threshold": 2.5
+  }
+}

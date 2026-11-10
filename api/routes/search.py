@@ -1,4 +1,4 @@
-"""Endpoint tìm kiếm sản phẩm hỗ trợ truy xuất BM25 và phân trang."""
+"""Endpoint tìm kiếm sản phẩm hỗ trợ truy xuất kết hợp hybrid BM25 và Vector."""
 
 import json
 import logging
@@ -6,11 +6,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from api.pipeline import run_pipeline
+from api.pipeline import HybridSearchError, run_pipeline
 from api.schemas import SearchResponse, SearchResultItem
 from config import SNIPPET_CHARS
 from query.parser import EmptyQueryError
 from retrieval.bm25 import BM25RetrievalError
+from retrieval.vector import VectorRetrievalError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,21 +24,22 @@ async def search_endpoint(
     size: int = Query(20, ge=1, le=50, description="Số lượng kết quả mỗi trang"),
     personalize: bool = Query(True, description="Bật hoặc tắt cá nhân hóa"),
     debug: bool = Query(False, description="Bật thông tin debug"),
+    config: str = Query("hybrid", description="Cấu hình tìm kiếm (bm25, vector, hybrid)"),
     x_session_id: Optional[str] = Header(None, alias="X-Session-Id"),
 ) -> SearchResponse:
-    """Thực hiện tìm kiếm sản phẩm với BM25, chuẩn hóa điểm số và phân trang."""
+    """Thực hiện tìm kiếm sản phẩm với hybrid BM25 + Vector, chuẩn hóa điểm số và phân trang."""
     try:
-        pipeline_result = await run_pipeline(q, config_name="bm25", personalize=personalize)
+        pipeline_result = await run_pipeline(q, config_name=config, personalize=personalize)
     except EmptyQueryError as exc:
         raise HTTPException(
             status_code=400,
             detail="Chuỗi truy vấn rỗng sau khi chuẩn hóa.",
         ) from exc
-    except BM25RetrievalError as exc:
-        logger.error("Lỗi khi truy xuất BM25: %s", exc, exc_info=True)
+    except (BM25RetrievalError, VectorRetrievalError, HybridSearchError) as exc:
+        logger.error("Lỗi khi tìm kiếm: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=503,
-            detail="Dịch vụ tìm kiếm BM25 tạm thời không khả dụng.",
+            detail="Dịch vụ tìm kiếm tạm thời không khả dụng.",
         ) from exc
 
     candidates = pipeline_result.candidates
@@ -57,8 +59,11 @@ async def search_endpoint(
         debug_info: Optional[Dict[str, Any]] = None
         if debug:
             debug_info = {
-                "bm25_rank": c.rank,
-                "bm25_score": round(c.score, 4),
+                "bm25_rank": c.bm25_rank,
+                "bm25_score": round(c.bm25_score, 4) if c.bm25_score is not None else None,
+                "vec_rank": c.vec_rank,
+                "vec_score": round(c.vec_score, 4) if c.vec_score is not None else None,
+                "rrf": round(c.rrf, 4) if c.rrf is not None else None,
                 "rel": score,
             }
 
@@ -75,7 +80,6 @@ async def search_endpoint(
             )
         )
 
-    # Ghi log JSON một dòng mỗi request
     log_record = {
         "query_id": pipeline_result.query_id,
         "lang": pipeline_result.parsed.lang,

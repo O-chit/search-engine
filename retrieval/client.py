@@ -24,6 +24,7 @@ def get_opensearch_client() -> OpenSearch:
             timeout=30,
             max_retries=3,
             retry_on_timeout=True,
+            maxsize=10,
         )
     return _client
 

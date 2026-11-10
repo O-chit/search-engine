@@ -1,0 +1,30 @@
+{
+  "config": "hybrid",
+  "run_at": "2026-11-10T21:33:10.599978",
+  "num_queries_total": 2359,
+  "metrics": {
+    "recall_at_100": {
+      "mean": 0.7461,
+      "num_queries": 1931
+    },
+    "mrr": {
+      "mean": 0.3028,
+      "num_queries": 1931
+    },
+    "ndcg_at_10": {
+      "mean": 0.8864,
+      "num_queries": 2354
+    }
+  },
+  "latency_ms": {
+    "p50": 95.27,
+    "p95": 104.22,
+    "mean": 94.57
+  },
+  "config_params": {
+    "retrieval_k": 200,
+    "candidate_k": 100,
+    "rrf_k": 60,
+    "relevant_threshold": 2.5
+  }
+}

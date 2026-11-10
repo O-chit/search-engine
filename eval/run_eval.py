@@ -108,6 +108,7 @@ def print_comparison_table(results_dir: str = EVAL_RESULTS_DIR) -> str:
 async def evaluate_config(
     config_name: str,
     limit: Optional[int] = None,
+    tie_analysis: bool = False,
 ) -> Dict[str, Any]:
     """Chạy đánh giá cấu hình tìm kiếm trên tập test và ghi kết quả ra file JSON."""
     supported = get_supported_configs()
@@ -130,10 +131,20 @@ async def evaluate_config(
     ground_truth_map = load_ground_truth(TRAIN_CSV_PATH)
     print(f"Bắt đầu đánh giá cấu hình '{config_name}' trên {len(test_queries)} truy vấn...")
 
+    if config_name in ("vector", "hybrid"):
+        print("Làm nóng mô hình embedding...")
+        from indexing.model import get_embedding_model
+        warmup_model = get_embedding_model()
+        _ = warmup_model.encode(["warmup query"], normalize_embeddings=True)
+        await run_pipeline("warmup query", config_name=config_name, personalize=False)
+
     recalls: List[float] = []
     mrrs: List[float] = []
     ndcgs: List[float] = []
     latencies: List[float] = []
+    mrr_best_list: List[float] = []
+    mrr_worst_list: List[float] = []
+    tie_dependent_count: int = 0
 
     t_eval_start = time.perf_counter()
 
@@ -153,6 +164,32 @@ async def evaluate_config(
             mrrs.append(m)
         if ndcg is not None:
             ndcgs.append(ndcg)
+
+        if tie_analysis:
+            relevant_uids = {u for u, r in gt.items() if r >= RELEVANT_THRESHOLD}
+            if relevant_uids:
+                first_rel_idx = None
+                for c_idx, c in enumerate(res.candidates):
+                    if c.product_uid in relevant_uids:
+                        first_rel_idx = c_idx
+                        break
+                if first_rel_idx is not None:
+                    target_score = res.candidates[first_rel_idx].score
+                    tie_indices = [
+                        c_idx
+                        for c_idx, c in enumerate(res.candidates)
+                        if abs(c.score - target_score) <= 1e-6
+                    ]
+                    if len(tie_indices) > 1:
+                        tie_dependent_count += 1
+                        mrr_best_list.append(1.0 / (min(tie_indices) + 1))
+                        mrr_worst_list.append(1.0 / (max(tie_indices) + 1))
+                    else:
+                        mrr_best_list.append(1.0 / (first_rel_idx + 1))
+                        mrr_worst_list.append(1.0 / (first_rel_idx + 1))
+                else:
+                    mrr_best_list.append(0.0)
+                    mrr_worst_list.append(0.0)
 
         if idx % 100 == 0 or idx == len(test_queries):
             cur_rec = np.mean(recalls) if recalls else 0.0
@@ -215,6 +252,18 @@ async def evaluate_config(
     print(f"Tổng thời gian đánh giá: {total_time:.2f}s")
 
     print_comparison_table(EVAL_RESULTS_DIR)
+
+    if tie_analysis and mrr_best_list:
+        mean_best = float(np.mean(mrr_best_list))
+        mean_worst = float(np.mean(mrr_worst_list))
+        range_w = mean_best - mean_worst
+        print("\n=== KẾT QUẢ PHÂN TÍCH PHÁ HOÀ (TIE ANALYSIS) ===")
+        print(f"Số truy vấn có MRR phụ thuộc phá hoà: {tie_dependent_count}")
+        print(f"MRR trung bình tốt nhất: {mean_best:.4f}")
+        print(f"MRR trung bình tệ nhất: {mean_worst:.4f}")
+        print(f"Độ rộng khoảng: {range_w:.4f}")
+        print("================================================\n")
+
     return eval_result
 
 
@@ -223,6 +272,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Chạy đánh giá chất lượng tìm kiếm theo cấu hình.")
     parser.add_argument("--config", type=str, required=True, help="Tên cấu hình tìm kiếm (ví dụ: bm25)")
     parser.add_argument("--limit", type=int, default=None, help="Giới hạn số lượng truy vấn đánh giá")
+    parser.add_argument(
+        "--tie-analysis",
+        action="store_true",
+        help="Phân tích ảnh hưởng của phá hoà đến chỉ số MRR",
+    )
 
     args = parser.parse_args()
 
@@ -233,7 +287,13 @@ def main() -> None:
         )
         sys.exit(1)
 
-    asyncio.run(evaluate_config(args.config, limit=args.limit))
+    asyncio.run(
+        evaluate_config(
+            args.config,
+            limit=args.limit,
+            tie_analysis=args.tie_analysis,
+        )
+    )
 
 
 if __name__ == "__main__":

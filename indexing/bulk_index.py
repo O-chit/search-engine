@@ -1,7 +1,9 @@
 """Đánh chỉ mục dữ liệu sản phẩm hàng loạt vào OpenSearch."""
 
 import argparse
+import json
 import logging
+import os
 from typing import Any, Dict, Iterator, Optional
 
 import numpy as np
@@ -10,9 +12,11 @@ import pandas as pd
 
 from config import (
     BULK_BATCH_SIZE,
+    EMBEDDINGS_NPY_PATH,
     INDEX_NAME,
     MAPPING_PATH,
     PRODUCTS_PARQUET_PATH,
+    UID_INDEX_PATH,
 )
 from retrieval.client import create_index, get_opensearch_client
 
@@ -23,28 +27,35 @@ logger = logging.getLogger(__name__)
 def generate_bulk_actions(
     df: pd.DataFrame,
     index_name: str,
-    embeddings: Optional[np.ndarray] = None,
+    embeddings: Optional[Any] = None,
+    uid_index: Optional[Dict[str, int]] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Tạo generator các tài liệu cần bulk index vào OpenSearch."""
-    for idx, row in df.iterrows():
-        doc: Dict[str, Any] = {
-            "_op_type": "index",
-            "_index": index_name,
-            "_id": str(row["product_uid"]),
-            "_source": {
-                "product_uid": str(row["product_uid"]),
-                "title": str(row["title"]) if pd.notna(row["title"]) else "",
-                "brand": str(row["brand"]) if pd.notna(row["brand"]) else "",
-                "bullets": str(row["bullets"]) if pd.notna(row["bullets"]) else "",
-                "description": str(row["description"]) if pd.notna(row["description"]) else "",
-                "attributes_text": (
-                    str(row["attributes_text"]) if pd.notna(row["attributes_text"]) else ""
-                ),
-            },
+    records = df.to_dict(orient="records")
+    for idx, row in enumerate(records):
+        uid_str = str(row["product_uid"])
+        source: Dict[str, Any] = {
+            "product_uid": uid_str,
+            "title": str(row["title"]) if pd.notna(row["title"]) else "",
+            "brand": str(row["brand"]) if pd.notna(row["brand"]) else "",
+            "bullets": str(row["bullets"]) if pd.notna(row["bullets"]) else "",
+            "description": str(row["description"]) if pd.notna(row["description"]) else "",
+            "attributes_text": (
+                str(row["attributes_text"]) if pd.notna(row["attributes_text"]) else ""
+            ),
         }
         if embeddings is not None:
-            doc["_source"]["embedding"] = embeddings[idx].tolist()
-        yield doc
+            if uid_index is not None and uid_str in uid_index:
+                source["embedding"] = embeddings[uid_index[uid_str]].tolist()
+            elif idx < len(embeddings):
+                source["embedding"] = embeddings[idx].tolist()
+
+        yield {
+            "_op_type": "index",
+            "_index": index_name,
+            "_id": uid_str,
+            "_source": source,
+        }
 
 
 def run_bulk_index(
@@ -52,9 +63,10 @@ def run_bulk_index(
     index_name: str = INDEX_NAME,
     mapping_path: str = MAPPING_PATH,
     recreate: bool = False,
-    embeddings: Optional[np.ndarray] = None,
+    embeddings_path: str = EMBEDDINGS_NPY_PATH,
+    uid_index_path: str = UID_INDEX_PATH,
 ) -> int:
-    """Thực thi toàn bộ luồng tạo chỉ mục và nạp dữ liệu hàng loạt."""
+    """Thực thi toàn bộ luồng tạo chỉ mục và nạp dữ liệu hàng loạt kèm embedding."""
     logger.info("Khởi tạo / kiểm tra chỉ mục %s...", index_name)
     create_index(index_name=index_name, mapping_path=mapping_path, recreate=recreate)
 
@@ -63,8 +75,25 @@ def run_bulk_index(
     total_docs = len(df)
     logger.info("Tổng số sản phẩm cần nạp: %d", total_docs)
 
+    embeddings: Optional[Any] = None
+    uid_index: Optional[Dict[str, int]] = None
+
+    if os.path.exists(embeddings_path) and os.path.exists(uid_index_path):
+        logger.info("Đang nạp embeddings từ %s và uid_index từ %s...", embeddings_path, uid_index_path)
+        embeddings = np.load(embeddings_path, mmap_mode="r")
+        with open(uid_index_path, "r", encoding="utf-8") as f:
+            uid_index = json.load(f)
+        logger.info("Đã nạp embeddings: shape=%s, uid_index: %d mục", embeddings.shape, len(uid_index))
+    else:
+        logger.warning("Không tìm thấy file embeddings hoặc uid_index!")
+
     client = get_opensearch_client()
-    actions = generate_bulk_actions(df=df, index_name=index_name, embeddings=embeddings)
+    actions = generate_bulk_actions(
+        df=df,
+        index_name=index_name,
+        embeddings=embeddings,
+        uid_index=uid_index,
+    )
 
     indexed_count = 0
     logger.info("Bắt đầu bulk index với batch size = %d...", BULK_BATCH_SIZE)
@@ -72,7 +101,7 @@ def run_bulk_index(
         client,
         actions,
         chunk_size=BULK_BATCH_SIZE,
-        request_timeout=120,
+        request_timeout=180,
     ):
         if success:
             indexed_count += 1

@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from config import BRANCH_TIMEOUT_MS, INDEX_NAME, RETRIEVAL_K
 from query.parser import ParsedQuery
@@ -71,20 +71,34 @@ def _execute_bm25_search(
 
     hits = response.get("hits", {}).get("hits", [])
     results: List[BM25Hit] = []
-    for rank, hit in enumerate(hits, start=1):
+    for hit in hits:
         source = hit.get("_source", {})
         results.append(
             BM25Hit(
                 product_uid=str(source.get("product_uid", hit.get("_id"))),
                 score=float(hit.get("_score", 0.0)),
-                rank=rank,
+                rank=0,
                 title=str(source.get("title", "")),
                 brand=str(source.get("brand", "")),
                 bullets=str(source.get("bullets", "")),
                 description=str(source.get("description", "")),
             )
         )
-    return results
+    return sort_bm25_hits(results)
+
+
+def sort_bm25_hits(hits: List[BM25Hit]) -> List[BM25Hit]:
+    """Sắp xếp danh sách BM25Hit theo score giảm dần rồi product_uid tăng dần và cập nhật lại rank."""
+    def _key(h: BM25Hit) -> Tuple[float, int, int, str]:
+        uid_str = str(h.product_uid)
+        is_num = 0 if uid_str.isdigit() else 1
+        num_val = int(uid_str) if uid_str.isdigit() else 0
+        return (-h.score, is_num, num_val, uid_str)
+
+    sorted_hits = sorted(hits, key=_key)
+    for rank, h in enumerate(sorted_hits, start=1):
+        h.rank = rank
+    return sorted_hits
 
 
 async def search_bm25(
