@@ -3,6 +3,11 @@
 import os
 from dotenv import load_dotenv
 
+# Thiết lập thư mục lưu cache HuggingFace trước mọi import transformers / sentence_transformers
+os.environ.setdefault("HF_HOME", "data/hf_cache")
+os.environ["HF_HOME"] = os.path.abspath("data/hf_cache")
+os.environ["HF_HUB_CACHE"] = os.path.abspath("data/hf_cache/hub")
+
 load_dotenv()
 
 
@@ -20,6 +25,9 @@ def resolve_device(requested: str = "cuda") -> str:
     return requested
 
 
+# HuggingFace Cache
+HF_HOME: str = os.getenv("HF_HOME", "data/hf_cache")
+
 # OpenSearch
 OPENSEARCH_URL: str = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
 INDEX_NAME: str = os.getenv("INDEX_NAME", "products")
@@ -28,6 +36,9 @@ INDEX_NAME: str = os.getenv("INDEX_NAME", "products")
 EMBED_MODEL: str = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
 EMBED_DIM: int = int(os.getenv("EMBED_DIM", "1024"))
 EMBED_BATCH_SIZE: int = int(os.getenv("EMBED_BATCH_SIZE", "16"))
+EMBED_MAX_SEQ_LEN: int = int(os.getenv("EMBED_MAX_SEQ_LEN", "256"))
+EMBED_CHECKPOINT_EVERY: int = int(os.getenv("EMBED_CHECKPOINT_EVERY", "5000"))
+EMBED_DESC_WORDS: int = int(os.getenv("EMBED_DESC_WORDS", "150"))
 DEVICE: str = resolve_device(os.getenv("DEVICE", "cuda"))
 
 # Retrieval
@@ -64,6 +75,7 @@ PROCESSED_DATA_DIR: str = os.getenv("PROCESSED_DATA_DIR", "data/processed")
 PRODUCTS_PARQUET_PATH: str = os.path.join(PROCESSED_DATA_DIR, "products.parquet")
 ATTR_MAX: int = int(os.getenv("ATTR_MAX", "30"))
 MAX_QUERY_CHARS: int = int(os.getenv("MAX_QUERY_CHARS", "200"))
+QUERY_CACHE_SIZE: int = int(os.getenv("QUERY_CACHE_SIZE", "10000"))
 
 # Indexing & API
 BULK_BATCH_SIZE: int = int(os.getenv("BULK_BATCH_SIZE", "500"))

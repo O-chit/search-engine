@@ -43,3 +43,14 @@ def test_parser_model_code_detection() -> None:
     assert parse("hammer drill bit").has_model_code is False
     assert parse("12345").has_model_code is False
     assert parse("drill 24v").has_model_code is False
+
+
+def test_parser_without_vector() -> None:
+    """Kiểm tra gọi parse không tạo vector trả về vector None và không nạp mô hình."""
+    result_default = parse("cordless drill")
+    assert result_default.vector is None
+
+    result_explicit = parse("máy khoan pin", with_vector=False)
+    assert result_explicit.vector is None
+    assert result_explicit.lang == "vi"
+
