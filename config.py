@@ -57,3 +57,11 @@ EXPLORE_POSITION: int = int(os.getenv("EXPLORE_POSITION", "8"))
 
 # Storage
 SQLITE_PATH: str = os.getenv("SQLITE_PATH", "data/app.db")
+
+# Ingestion
+RAW_DATA_DIR: str = os.getenv("RAW_DATA_DIR", "data/raw")
+PROCESSED_DATA_DIR: str = os.getenv("PROCESSED_DATA_DIR", "data/processed")
+PRODUCTS_PARQUET_PATH: str = os.path.join(PROCESSED_DATA_DIR, "products.parquet")
+ATTR_MAX: int = int(os.getenv("ATTR_MAX", "30"))
+MAX_QUERY_CHARS: int = int(os.getenv("MAX_QUERY_CHARS", "200"))
+
