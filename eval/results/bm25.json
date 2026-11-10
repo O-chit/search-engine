@@ -1,0 +1,30 @@
+{
+  "config": "bm25",
+  "run_at": "2026-11-10T19:14:05.887313",
+  "num_queries_total": 2359,
+  "metrics": {
+    "recall_at_100": {
+      "mean": 0.6687,
+      "num_queries": 1931
+    },
+    "mrr": {
+      "mean": 0.2703,
+      "num_queries": 1931
+    },
+    "ndcg_at_10": {
+      "mean": 0.8816,
+      "num_queries": 2354
+    }
+  },
+  "latency_ms": {
+    "p50": 54.42,
+    "p95": 63.34,
+    "mean": 54.57
+  },
+  "config_params": {
+    "retrieval_k": 200,
+    "candidate_k": 100,
+    "rrf_k": 60,
+    "relevant_threshold": 2.5
+  }
+}

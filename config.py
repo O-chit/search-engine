@@ -72,4 +72,13 @@ API_PORT: int = int(os.getenv("API_PORT", "8000"))
 SNIPPET_CHARS: int = int(os.getenv("SNIPPET_CHARS", "160"))
 MAPPING_PATH: str = os.getenv("MAPPING_PATH", "indexing/mapping.json")
 
+# Evaluation
+SPLIT_SEED: int = int(os.getenv("SPLIT_SEED", "42"))
+SPLIT_TEST_RATIO: float = float(os.getenv("SPLIT_TEST_RATIO", "0.2"))
+RELEVANT_THRESHOLD: float = float(os.getenv("RELEVANT_THRESHOLD", "2.5"))
+SPLIT_PATH: str = os.getenv("SPLIT_PATH", os.path.join(PROCESSED_DATA_DIR, "split.json"))
+EVAL_RESULTS_DIR: str = os.getenv("EVAL_RESULTS_DIR", "eval/results")
+TRAIN_CSV_PATH: str = os.getenv("TRAIN_CSV_PATH", os.path.join(RAW_DATA_DIR, "train.csv"))
+
+
 
