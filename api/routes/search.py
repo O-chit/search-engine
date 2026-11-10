@@ -6,12 +6,13 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from api.pipeline import HybridSearchError, run_pipeline
 from api.schemas import SearchResponse, SearchResultItem
 from config import SNIPPET_CHARS
 from query.parser import EmptyQueryError
 from retrieval.bm25 import BM25RetrievalError
 from retrieval.vector import VectorRetrievalError
+from search.pipeline import HybridSearchError, run_pipeline
+from storage.db import ensure_session, record_query
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,6 +29,9 @@ async def search_endpoint(
     x_session_id: Optional[str] = Header(None, alias="X-Session-Id"),
 ) -> SearchResponse:
     """Thực hiện tìm kiếm sản phẩm với hybrid BM25 + Vector, chuẩn hóa điểm số và phân trang."""
+    if x_session_id:
+        ensure_session(x_session_id)
+
     try:
         pipeline_result = await run_pipeline(q, config_name=config, personalize=personalize)
     except EmptyQueryError as exc:
@@ -78,6 +82,20 @@ async def search_endpoint(
                 explored=False,
                 debug=debug_info,
             )
+        )
+
+    if page == 1:
+        result_uids = [item.product_uid for item in result_items]
+        record_query(
+            query_id=pipeline_result.query_id,
+            session_id=x_session_id,
+            raw_text=q,
+            normalized_text=pipeline_result.parsed.normalized,
+            lang=pipeline_result.parsed.lang,
+            result_uids=result_uids,
+            personalized=personalize,
+            degraded=pipeline_result.degraded,
+            timing_ms=pipeline_result.timing.model_dump(),
         )
 
     log_record = {

@@ -158,10 +158,11 @@ async def _run_vector_pipeline(
 async def _run_hybrid_pipeline(
     parsed: ParsedQuery,
     personalize: bool = False,
+    timeout_ms: Optional[int] = None,
 ) -> Tuple[List[CandidateItem], float, float, bool]:
     """Thực thi tìm kiếm song song BM25 và Vector, gộp bằng RRF và xếp hạng."""
     t_retrieval_start = time.perf_counter()
-    timeout_sec = BRANCH_TIMEOUT_MS / 1000.0
+    timeout_sec = (timeout_ms if timeout_ms is not None else BRANCH_TIMEOUT_MS) / 1000.0
 
     async def _fetch_bm25() -> List[BM25Hit]:
         return await asyncio.wait_for(search_bm25(parsed, k=RETRIEVAL_K), timeout=timeout_sec)
@@ -262,6 +263,7 @@ async def run_pipeline(
     query: str,
     config_name: str = "hybrid",
     personalize: bool = False,
+    timeout_ms: Optional[int] = None,
 ) -> PipelineResult:
     """Chạy quy trình tìm kiếm sản phẩm theo cấu hình và trả về danh sách ứng viên kèm thời gian thực thi."""
     if config_name not in PIPELINE_REGISTRY:
@@ -278,7 +280,10 @@ async def run_pipeline(
     parse_ms = (time.perf_counter() - t_parse_start) * 1000
 
     handler = PIPELINE_REGISTRY[config_name]
-    candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, personalize)
+    if config_name == "hybrid" and timeout_ms is not None:
+        candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, personalize, timeout_ms=timeout_ms)
+    else:
+        candidates, retrieval_ms, rank_ms, degraded = await handler(parsed, personalize)
 
     total_ms = (time.perf_counter() - t_start) * 1000
     timing = SearchTiming(

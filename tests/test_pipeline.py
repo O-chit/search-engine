@@ -6,10 +6,10 @@ from fastapi.testclient import TestClient
 import pytest
 
 from api.main import app
-from api.pipeline import run_pipeline
 from query.parser import ParsedQuery
 from retrieval.bm25 import BM25Hit, BM25RetrievalError
 from retrieval.vector import VectorHit, VectorRetrievalError
+from search.pipeline import run_pipeline
 
 client = TestClient(app)
 
@@ -27,7 +27,7 @@ def dummy_parsed(query_text: str = "drill") -> ParsedQuery:
 
 def test_bm25_error_uses_vector_and_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kiểm tra nhánh BM25 ném lỗi thì kết quả lấy từ nhánh vector và degraded=True."""
-    monkeypatch.setattr("api.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
+    monkeypatch.setattr("search.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
 
     async def mock_search_bm25(query: ParsedQuery, k: int = 200) -> List[BM25Hit]:
         raise BM25RetrievalError("Lỗi kết nối BM25")
@@ -50,8 +50,8 @@ def test_bm25_error_uses_vector_and_degraded(monkeypatch: pytest.MonkeyPatch) ->
             ),
         ]
 
-    monkeypatch.setattr("api.pipeline.search_bm25", mock_search_bm25)
-    monkeypatch.setattr("api.pipeline.search_vector", mock_search_vector)
+    monkeypatch.setattr("search.pipeline.search_bm25", mock_search_bm25)
+    monkeypatch.setattr("search.pipeline.search_vector", mock_search_vector)
 
     result = asyncio.run(run_pipeline("cordless drill", config_name="hybrid"))
     assert result.degraded is True
@@ -62,7 +62,7 @@ def test_bm25_error_uses_vector_and_degraded(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_vector_timeout_uses_bm25_and_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kiểm tra nhánh vector quá hạn thì kết quả lấy từ BM25 và degraded=True."""
-    monkeypatch.setattr("api.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
+    monkeypatch.setattr("search.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
 
     async def mock_search_bm25(query: ParsedQuery, k: int = 200) -> List[BM25Hit]:
         return [
@@ -79,8 +79,8 @@ def test_vector_timeout_uses_bm25_and_degraded(monkeypatch: pytest.MonkeyPatch) 
         await asyncio.sleep(0.5)
         return []
 
-    monkeypatch.setattr("api.pipeline.search_bm25", mock_search_bm25)
-    monkeypatch.setattr("api.pipeline.search_vector", mock_search_vector_timeout)
+    monkeypatch.setattr("search.pipeline.search_bm25", mock_search_bm25)
+    monkeypatch.setattr("search.pipeline.search_vector", mock_search_vector_timeout)
 
     result = asyncio.run(run_pipeline("cordless drill", config_name="hybrid"))
     assert result.degraded is True
@@ -90,7 +90,7 @@ def test_vector_timeout_uses_bm25_and_degraded(monkeypatch: pytest.MonkeyPatch) 
 
 def test_both_branches_fail_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kiểm tra cả hai nhánh tìm kiếm đều lỗi thì API trả mã trạng thái 503."""
-    monkeypatch.setattr("api.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
+    monkeypatch.setattr("search.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
 
     async def mock_search_bm25(query: ParsedQuery, k: int = 200) -> List[BM25Hit]:
         raise BM25RetrievalError("BM25 chết hoàn toàn")
@@ -98,8 +98,8 @@ def test_both_branches_fail_returns_503(monkeypatch: pytest.MonkeyPatch) -> None
     async def mock_search_vector(query: ParsedQuery, k: int = 200) -> List[VectorHit]:
         raise VectorRetrievalError("Vector chết hoàn toàn")
 
-    monkeypatch.setattr("api.pipeline.search_bm25", mock_search_bm25)
-    monkeypatch.setattr("api.pipeline.search_vector", mock_search_vector)
+    monkeypatch.setattr("search.pipeline.search_bm25", mock_search_bm25)
+    monkeypatch.setattr("search.pipeline.search_vector", mock_search_vector)
 
     response = client.get("/search?q=hammer")
     assert response.status_code == 503
@@ -107,7 +107,7 @@ def test_both_branches_fail_returns_503(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_no_candidates_returns_200_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kiểm tra không có ứng viên nào thì API trả mã 200 kèm danh sách rỗng."""
-    monkeypatch.setattr("api.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
+    monkeypatch.setattr("search.pipeline.parse", lambda q, with_vector=False: dummy_parsed(q))
 
     async def mock_search_bm25(query: ParsedQuery, k: int = 200) -> List[BM25Hit]:
         return []
@@ -115,8 +115,8 @@ def test_no_candidates_returns_200_empty(monkeypatch: pytest.MonkeyPatch) -> Non
     async def mock_search_vector(query: ParsedQuery, k: int = 200) -> List[VectorHit]:
         return []
 
-    monkeypatch.setattr("api.pipeline.search_bm25", mock_search_bm25)
-    monkeypatch.setattr("api.pipeline.search_vector", mock_search_vector)
+    monkeypatch.setattr("search.pipeline.search_bm25", mock_search_bm25)
+    monkeypatch.setattr("search.pipeline.search_vector", mock_search_vector)
 
     response = client.get("/search?q=unobtainium_tool_12345")
     assert response.status_code == 200

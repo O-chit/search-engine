@@ -1,6 +1,6 @@
 """Lược đồ dữ liệu Pydantic cho API tìm kiếm và sức khỏe hệ thống."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -52,3 +52,20 @@ class HealthResponse(BaseModel):
     opensearch: str
     model_loaded: bool = False
     document_count: int
+
+
+class EventCreateRequest(BaseModel):
+    """Mô hình dữ liệu gửi lên khi ghi nhận sự kiện tương tác người dùng."""
+
+    query_id: str
+    product_uid: str
+    type: Literal["click"]
+    position: int
+
+
+class SessionResponse(BaseModel):
+    """Mô hình phản hồi thông tin số lượng sự kiện và danh sách sản phẩm gần nhất của phiên."""
+
+    event_count: int = 0
+    recent_uids: List[str] = Field(default_factory=list)
+

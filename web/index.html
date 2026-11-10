@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hệ thống tìm kiếm sản phẩm</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      line-height: 1.5;
+      color: #333;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    .search-box {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    #q {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #search-btn, #clear-history {
+      padding: 10px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      background: #f5f5f5;
+      border-radius: 4px;
+    }
+    #search-btn:hover, #clear-history:hover {
+      background: #e8e8e8;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: #555;
+    }
+    .stats {
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #666;
+      display: flex;
+      gap: 20px;
+    }
+    .result {
+      border-bottom: 1px solid #eee;
+      padding: 12px 0;
+      cursor: pointer;
+    }
+    .result:hover {
+      background-color: #fafafa;
+    }
+    .result.viewed {
+      opacity: 0.7;
+    }
+    .result.viewed .title {
+      color: #6a1b9a;
+    }
+    .result .title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a0dab;
+      margin-bottom: 4px;
+    }
+    .result .brand {
+      font-size: 13px;
+      color: #006621;
+      margin-bottom: 4px;
+    }
+    .result .snippet {
+      font-size: 14px;
+      color: #4d5156;
+    }
+    .explored-badge {
+      display: inline-block;
+      background: #fff3cd;
+      color: #856404;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-left: 8px;
+    }
+    .debug-box {
+      margin-top: 8px;
+      background: #f8f9fa;
+      border: 1px dashed #ccc;
+      padding: 6px 10px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hệ thống tìm kiếm sản phẩm</h1>
+
+  <div class="search-box">
+    <input type="text" id="q" placeholder="Nhập từ khóa tìm kiếm (tiếng Anh hoặc tiếng Việt)..." autocomplete="off">
+    <button type="button" id="search-btn">Tìm kiếm</button>
+  </div>
+
+  <div class="controls">
+    <label>
+      <input type="checkbox" id="toggle-personalize" checked> Cá nhân hóa
+    </label>
+    <label>
+      <input type="checkbox" id="toggle-debug"> Debug
+    </label>
+    <button type="button" id="clear-history">Xóa lịch sử</button>
+  </div>
+
+  <div class="stats">
+    <div>Thời gian: <span id="timing">0 ms</span></div>
+    <div>Số click đã ghi nhận: <span id="click-count">0</span></div>
+  </div>
+
+  <div id="results"></div>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>
