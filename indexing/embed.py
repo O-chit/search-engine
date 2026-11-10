@@ -36,6 +36,21 @@ def build_product_text(row: pd.Series) -> str:
     return f"{title}. {brand}. {bullets}. {desc_part}"
 
 
+def format_time(seconds: float) -> str:
+    """Định dạng số giây thành chuỗi thời gian dễ đọc."""
+    secs = int(round(seconds))
+    if secs < 0:
+        return "0s"
+    h = secs // 3600
+    m = (secs % 3600) // 60
+    s = secs % 60
+    if h > 0:
+        return f"{h}h {m:02d}m {s:02d}s"
+    if m > 0:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
+
+
 def run_embed(
     parquet_path: str = PRODUCTS_PARQUET_PATH,
     out_dir: str = PROCESSED_DATA_DIR,
@@ -81,7 +96,10 @@ def run_embed(
             resumed_embeddings = None
             start_idx = 0
 
+    model_load_start = time.perf_counter()
     model = get_embedding_model()
+    model_load_time = time.perf_counter() - model_load_start
+
     batch_size = initial_batch_size
     all_chunks: List[np.ndarray] = []
     if resumed_embeddings is not None:
@@ -89,6 +107,10 @@ def run_embed(
 
     current_idx = start_idx
     target_count = min(total_targets, stop_after) if stop_after is not None else total_targets
+    progress_step = 1000 if total_targets >= 1000 else min(checkpoint_every, 50)
+    last_progress_idx = start_idx
+
+    encode_start_time = time.perf_counter()
 
     while current_idx < target_count:
         next_checkpoint = (
@@ -111,7 +133,23 @@ def run_embed(
             all_chunks.append(batch_vecs)
             current_idx = chunk_end
 
-            print(f"Tiến độ: {current_idx}/{total_targets} sản phẩm đã xử lý (batch_size={batch_size}).")
+            elapsed_encode = time.perf_counter() - encode_start_time
+            encoded_so_far = current_idx - start_idx
+            speed_so_far = encoded_so_far / elapsed_encode if elapsed_encode > 0 else 0.0
+            remaining_items = target_count - current_idx
+            eta_seconds = remaining_items / speed_so_far if speed_so_far > 0 else 0.0
+
+            should_print = (
+                (current_idx - last_progress_idx >= progress_step)
+                or (current_idx % checkpoint_every == 0)
+                or (current_idx >= target_count)
+            )
+            if should_print:
+                print(
+                    f"Tiến độ: {current_idx}/{total_targets} sản phẩm đã xử lý "
+                    f"(batch_size={batch_size}, ETA: {format_time(eta_seconds)})."
+                )
+                last_progress_idx = current_idx
 
             # Lưu checkpoint nếu chạm mốc checkpoint_every
             if current_idx % checkpoint_every == 0 and current_idx < total_targets:
@@ -128,7 +166,8 @@ def run_embed(
                     torch.cuda.empty_cache()
                 if batch_size > 1:
                     batch_size = max(1, batch_size // 2)
-                    logger.warning("Hết bộ nhớ GPU! Giảm batch size xuống %d và thử lại.", batch_size)
+                    print(f"Hết bộ nhớ GPU tại sản phẩm {current_idx}! Giảm batch size xuống {batch_size} và thử lại.")
+                    logger.warning("Hết bộ nhớ GPU tại sản phẩm %d! Giảm batch size xuống %d và thử lại.", current_idx, batch_size)
                     continue
                 else:
                     raise
@@ -144,8 +183,9 @@ def run_embed(
             break
 
     total_time = time.perf_counter() - start_time
+    encode_time = time.perf_counter() - encode_start_time
     processed_count = current_idx - start_idx
-    speed = processed_count / total_time if total_time > 0 else 0.0
+    speed_no_load = processed_count / encode_time if encode_time > 0 else 0.0
 
     if torch.cuda.is_available():
         peak_vram_mb = torch.cuda.max_memory_allocated() / (1024 * 1024)
@@ -162,15 +202,26 @@ def run_embed(
         with open(final_uids_path, "w", encoding="utf-8") as f:
             json.dump(uid_index, f, indent=2)
 
-        if os.path.exists(ckpt_embs_path):
-            os.remove(ckpt_embs_path)
-        if os.path.exists(ckpt_uids_path):
-            os.remove(ckpt_uids_path)
+        for fname in os.listdir(out_dir):
+            if fname.startswith("checkpoint"):
+                fpath = os.path.join(out_dir, fname)
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+
+    if start_idx > 0:
+        count_str = (
+            f"đã có từ checkpoint = {start_idx}, "
+            f"encode lần này = {processed_count}, "
+            f"tổng = {current_idx}"
+        )
+    else:
+        count_str = f"số sản phẩm = {current_idx}"
 
     print(
-        f"Hoàn thành: số sản phẩm = {current_idx}, "
-        f"thời gian = {total_time:.2f}s, "
-        f"tốc độ = {speed:.2f} sản phẩm/giây, "
+        f"Hoàn thành: {count_str}, "
+        f"thời gian nạp mô hình = {model_load_time:.2f}s, "
+        f"tổng thời gian = {total_time:.2f}s, "
+        f"tốc độ không tính nạp mô hình = {speed_no_load:.2f} sản phẩm/giây, "
         f"batch size cuối cùng = {batch_size}, "
         f"bộ nhớ GPU đỉnh = {peak_vram_mb:.2f} MB"
     )
